@@ -7,7 +7,7 @@ import (
 )
 
 func main() {
-	strings := []string{"пятак", "пЯтка", "Тяпка", "листок", "слиток", "столик", "янтарь", "я"}
+	strings := []string{"пятак", "пЯтка", "Тяпка", "листок", "слиток", "столик", "янтарь", "я", "ПиЛа", "лИпа", "Пост", "стоП"}
 	fmt.Println(createBook(strings))
 }
 
@@ -29,8 +29,7 @@ func createBook(input []string) map[string][]string {
 	return ans
 }
 
-
-func refactorMap(m map[string][]string) (map[string][]string) {
+func refactorMap(m map[string][]string) map[string][]string {
 	ans := make(map[string][]string)
 	for _, val := range m {
 		ans[val[0]] = val

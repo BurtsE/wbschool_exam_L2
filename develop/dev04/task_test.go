@@ -28,3 +28,51 @@ func TestSortStrings(t *testing.T) {
 		}
 	}
 }
+
+func TestRefactorMap(t *testing.T) {
+	testMap := map[string][]string{
+		"a": []string{"абв", "бвг", "жвк"},
+		"b": []string{"жвк", "бвг", "абв"},
+		"c": []string{"кот", "бвг", "дом"},
+		"d": []string{"нора", "рот", "жвк"},
+	}
+	testOutput := map[string][]string{
+		"абв":  []string{"абв", "бвг", "жвк"},
+		"жвк":  []string{"абв", "бвг", "жвк"},
+		"кот":  []string{"бвг", "дом", "кот"},
+		"нора": []string{"жвк", "нора", "рот"},
+	}
+	output := refactorMap(testMap)
+	for key, val := range output {
+		v, ok := testOutput[key]
+		if !ok {
+			t.Fatalf("Wrong key: %s", key)
+		}
+		for k := range val {
+			if k >= len(v) || val[k] != v[k] {
+				t.Errorf("Expected: %v. Got: %v", v, val)
+			}
+		}
+	}
+}
+
+func TestCreateBook(t *testing.T) {
+	testStrings := []string{"пятак", "пЯтка", "Тяпка", "листок", "слиток", "столик", "янтарь", "я"}
+	testOutput := map[string][]string{
+		"листок": []string{"листок", "слиток", "столик"},
+		"пятак":  []string{"пятак", "пятка", "тяпка"},
+		"янтарь": []string{"янтарь"},
+	}
+	output := createBook(testStrings)
+	for key, val := range output {
+		v, ok := testOutput[key]
+		if !ok {
+			t.Fatalf("Wrong key: %s", key)
+		}
+		for k := range val {
+			if k >= len(v) || val[k] != v[k] {
+				t.Errorf("Expected: %v. Got: %v", v, val)
+			}
+		}
+	}
+}
