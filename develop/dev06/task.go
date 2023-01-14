@@ -28,20 +28,42 @@ func main() {
 		}
 	}
 
-	file := os.Stdin
-	scanner := bufio.NewScanner(file)
-	
+	scanner := bufio.NewScanner(os.Stdin)
+	writer := bufio.NewWriter(os.Stdout)
+	Cut(s, fields, d, scanner, writer)
+	//		for scanner.Scan() {
+	//			columns := strings.Split(scanner.Text(), d)
+	//			if len(columns) > 1 {
+	//				for _, n := range fields {
+	//					if n < len(columns)+1 {
+	//						fmt.Print(columns[n-1], " ")
+	//					}
+	//				}
+	//				fmt.Print("\n")
+	//			} else if !s {
+	//				fmt.Println(columns[0])
+	//			}
+	//		}
+	//	}
+}
+func Cut(s bool, fields []int, d string, scanner *bufio.Scanner, w *bufio.Writer) {
+
 	for scanner.Scan() {
 		columns := strings.Split(scanner.Text(), d)
 		if len(columns) > 1 {
-			for _, n := range fields {
+			for i, n := range fields {
 				if n < len(columns)+1 {
-					fmt.Print(columns[n-1], " ")
+					if i == 0 {
+						fmt.Fprintf(w, "%s", columns[n-1])
+					} else {
+						fmt.Fprintf(w, ":%s", columns[n-1])
+					}
+
 				}
 			}
-			fmt.Print("\n")
+			fmt.Fprint(w, "\n")
 		} else if !s {
-			fmt.Println(columns[0])
+			fmt.Fprintf(w, "%s\n", columns[0])
 		}
 	}
 }

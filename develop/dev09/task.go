@@ -6,133 +6,144 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
-	"regexp"
 	"strings"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
-var protocol string
+var workingDir string
+var treeMap map[string]bool
+var scheme string
+var maxDepth int
 
 func main() {
 	flag.Parse()
-	protocol = "http://"
-	url := strings.TrimLeft(flag.Args()[0], "http://")
-	site, file, _ := strings.Cut(url, "/")
 
-	err := os.Mkdir(site, 0777)
+	parsedURL, err := url.Parse(flag.Args()[0])
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	if err != nil {
 		log.Println(err)
 	}
+	os.Mkdir(parsedURL.Host, 0777)
+	os.Chdir(parsedURL.Host)
+	workingDir, _ = os.Getwd()
 
-	err = os.Chdir(site)
-	if err != nil {
-		log.Println(err)
+	path := parsedURL.Path
+	segments := strings.Split(path, "/")
+	fileName := segments[len(segments)-1]
+	if fileName == "" {
+		fileName = parsedURL.Path
 	}
-	var urls = make([][]byte, 1)
-	urls[0] = []byte(url)
-
-	fmt.Println(site, file)
-	downloadFile("index.html", protocol+url)
-	// for _, url := range urls {
-	// 	if strings.Contains(string(url), site) {
-	// 		doc, err := downloadFile(string(url), string(url))
-	// 		doc, _ = os.Open(doc.Name())
-	// 		data, err := io.ReadAll(doc)
-	// 		if err != nil {
-	// 			log.Fatal(err)
-	// 		}
-	// 		exp, _ := regexp.Compile(`<a href=".*">`)
-	// 		urls = exp.FindAll(data, -1)
-	// 		for i, _ := range urls {
-	// 			urls[i] = urls[i][9 : len(urls[i])-2]
-	// 			fmt.Println(string(urls[i]))
-	// 		}
-	// 		defer doc.Close()
-	// 	}
-	// }
-	// doc, err := downloadFile("index.html", url)
-	// doc, _ = os.Open(doc.Name())
-
-	// fmt.Println(doc.Name())
-
-	// defer doc.Close()
-	// if err != nil {
-	// 	log.Println(err)
-	// }
-	// data, err := io.ReadAll(doc)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// exp, _ := regexp.Compile(`<a href=".*">`)
-	// urls = exp.FindAll(data, -1)
-
-	// for i, _ := range urls {
-	// 	urls[i] = urls[i][9 : len(urls[i])-2]
-	// 	fmt.Println(string(urls[i]))
-	// }
-
+	treeMap = make(map[string]bool)
+	scheme = parsedURL.Scheme
+	maxDepth = 1
+	downloadFile(parsedURL.Path, parsedURL.Host, parsedURL.Path, 0)
 }
 
-func downloadFile(filepath string, url string) (*os.File, error) {
-	log.Printf("Downdloading %s as %s\n", url, filepath)
+func downloadFile(fileName string, host, path string, depth int) (*os.File, error) {
 	var recursive = true
-	// Create the file
-	out, err := os.Create(filepath)
-	if err != nil {
-		log.Println("create", err)
-		out, err = os.Open(filepath)
-		if err != nil {
-			log.Println("open", err)
-			return out, err
-		}
-
-		//return out, err
+	if depth == maxDepth {
+		recursive = false
 	}
-	defer out.Close()
+	log.Println(fileName, scheme, host, path)
+	var download = scheme + "://" + host + path
+	fileName = strings.Trim(fileName, "/")
+	if fileName == "" {
+		fileName = host
+	}
+
+	log.Printf("Downdloading %s as %s(%d)\n", download, fileName, len(fileName))
 
 	// Get the data
-	resp, err := http.Get(url)
+	resp, err := http.Get(download)
 	if err != nil {
 		log.Println("get", err)
-		return out, err
+		return nil, err
 	}
 	defer resp.Body.Close()
-
 	// Check server response
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("bad status: %s", resp.Status)
 		return nil, fmt.Errorf("bad status: %s", resp.Status)
 	}
 
-	// Writer the body to file
-	_, err = io.Copy(out, resp.Body)
+	log.Printf("Finished %s\n", download)
+
+	// Create the file
+	out := createFile(fileName)
+	io.Copy(out, resp.Body)
+	out.Close()
+	out, err = os.Open(out.Name())
 	if err != nil {
-		log.Println("copy", err)
-		return out, err
+		log.Println(err)
+		return nil, err
 	}
-
-	log.Printf("Finished %s\n", url)
-
+	err = os.Chdir(workingDir)
+	if err != nil {
+		log.Println(err)
+	}
+	document, err := goquery.NewDocumentFromReader(out)
+	if err != nil {
+		log.Println("Error loading HTTP response body. ", err)
+		return nil, err
+	}
 	if !recursive {
 		return out, nil
 	}
-	out.Close()
-	out, _ = os.Open(out.Name())
-	data, err := io.ReadAll(out)
-	if err != nil {
-		log.Fatal(err)
-	}
-	exp, _ := regexp.Compile(`<a href=".*">`)
-	urls := exp.FindAll(data, -1)
+	log.Println("scanning links...")
 
-	//log.Printf("Downdloading %v\n", urls)
-	for i, _ := range urls {
-		urls[i] = urls[i][9 : len(urls[i])-2]
-		parts := strings.Split(string(urls[i]), "/")
-		filepath = parts[len(parts)-1] + ".html"
-
-		downloadFile(filepath, string(urls[i]))
+	// Find all links and process them
+	var links = make([]*url.URL, 0)
+	document.Find("a").Each(func(index int, element *goquery.Selection) {
+		href, exists := element.Attr("href")
+		if exists {
+			parsedURL, err := url.Parse(href)
+			if err == nil {
+				if len(parsedURL.Host) == 0 {
+					parsedURL.Host = host
+				}
+				if host == parsedURL.Host {
+					links = append(links, parsedURL)
+				}
+			} else {
+				log.Println(err)
+			}
+		}
+	})
+	log.Println(links)
+	for _, plink := range links {
+		newFileName := plink.Path
+		if _, ok := treeMap[newFileName]; !ok {
+			treeMap[newFileName] = true
+			downloadFile(plink.Path, plink.Host, plink.Path, depth+1)
+		}
 	}
 	return out, nil
+}
 
+func createFile(fileName string) (file *os.File) {
+	path := strings.Split(fileName, "/")
+	var err error
+	var i int
+	for i = 0; i < len(path)-1; i++ {
+		os.Mkdir(path[i], 0777)
+		os.Chdir(path[i])
+	}
+	if i == 0 {
+		file, err = os.Create("index.html")
+	} else {
+		file, err = os.Create(path[i])
+	}
+
+	if err != nil {
+		log.Printf("could not create file: %s", err)
+		file, err = os.Create("index.html")
+	}
+	log.Printf("created file: %s\n", file.Name())
+	return
 }

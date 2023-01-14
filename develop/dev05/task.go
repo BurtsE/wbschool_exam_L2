@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"regexp"
 )
 
 func Usage() {
-	fmt.Printf("Usage: main [flags] PATTERNS [FILE...]\n")
+	log.Printf("Usage: main [flags] PATTERNS [FILE...]\n")
 }
 
 func main() {
@@ -37,7 +38,7 @@ func main() {
 	length := len(flag.Args())
 	if length < 1 {
 		Usage()
-		log.Fatalf("Not enough arguments: %v", flag.Args())
+		os.Exit(1)
 	}
 
 	// Попытка открыть файл. Если не удалась, последний аргумент считается паттерном
@@ -56,43 +57,47 @@ func main() {
 		lines = append(lines, scanner.Text())
 	}
 
-	var set = make(map[string]bool) // Множество для предотвращения многократной печати одной и той же строки.
+	grep(A, B, c, i, v, f, n, patterns, lines, os.Stdout)
+}
+
+func grep(A, B int, c, i, v, f, n bool, patterns []string, lines []string, w io.Writer) {
+
+	var set = make(map[int]bool)    // Множество для предотвращения многократной печати одной и той же строки.
 	var answer = make([]string, 0)  // Результат работы
-	var answerLine = make([]int, 0) // Номера строк в результате
+	var answerLine = make([]int, 0) // Номера строк в результате 123
 
 	for num := 0; num < len(lines); num++ { // Проверка каждой строки
 		for m := 0; m < len(patterns); m++ { // Соответствие каждому из паттернов
 			if matches(patterns[m], lines[num], i, v, f) {
 				start := BeforeN(num, B)
 				end := num + AfterN(A, lines[num:])
-				for q := start; q < end; q++ {
-					if _, ok := set[lines[q]]; !ok { // Если строка еще не добавлена в ответ
-						set[lines[q]] = false
+				for q := start; q <= end; q++ {
+					if _, ok := set[q]; !ok { // Если строка еще не добавлена в ответ
+						set[q] = false
 						answer = append(answer, lines[q])
 						answerLine = append(answerLine, q)
 					}
 				}
-				set[lines[num]] = true // True у строк, подходящих паттерну
+				set[num] = true // True у строк, подходящих паттерну
 				//num = end // Пропуск строк, добавленных в ответ
 			}
 		}
 	}
 	// Размер результата
 	if c {
-		fmt.Println(len(answer))
+		fmt.Fprintf(w, "%d \n", len(answer))
 		return
 	}
 	for i, line := range answer {
 		if n {
-			if set[line] {
-				fmt.Printf("%d: ", answerLine[i])
+			if set[answerLine[i]] {
+				fmt.Fprintf(w, "%d: ", answerLine[i])
 			} else {
-				fmt.Printf("%d- ", answerLine[i])
+				fmt.Fprintf(w, "%d- ", answerLine[i])
 			}
 		}
-		fmt.Println(line)
+		fmt.Fprintf(w, "%s\n", line)
 	}
-	//fmt.Println(A, B, C, c, i, v, f, n)
 }
 
 // Вычисляет смещение на -B с учетом границы массива
@@ -106,11 +111,13 @@ func BeforeN(num, B int) int {
 
 // Вычисляет смещение на +A с учетом границы массива
 func AfterN(A int, afterLines []string) int {
-	var end int
-	for i := 0; i < A+2 && i < len(afterLines); i++ {
-		end = i
+	if len(afterLines) == 0 {
+		return 0
 	}
-	return end
+	if A >= len(afterLines) {
+		return len(afterLines) - 1
+	}
+	return A
 }
 
 // Фукнция проверяет, подходит ли строка для ответа с учетом флагов
