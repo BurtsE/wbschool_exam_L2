@@ -27,6 +27,8 @@ var scheme string
 var maxDepth int
 
 func main() {
+
+	flag.IntVar(&maxDepth, "r", -1, "Глубина рекурсии, отрицательное значение для отсутствия ограничения")
 	flag.Parse()
 
 	parsedURL, err := url.Parse(flag.Args()[0])
@@ -46,18 +48,16 @@ func main() {
 	}
 	treeMap = make(map[string]bool)
 	scheme = parsedURL.Scheme
-	maxDepth = -1
 	downloadFile(parsedURL.Path, parsedURL.Host, parsedURL.Path, 0)
 }
 
 // Функция для рекурсивной загрузки файлов
 func downloadFile(fileName string, host, path string, depth int) (*os.File, error) {
-	log.Println(fileName, host, path, depth)
+
 	var recursive = true
 	if depth == maxDepth {
 		recursive = false
 	}
-	log.Println(fileName, scheme, host, path)
 	var download = scheme + "://" + host + path
 	fileName = strings.Trim(fileName, "/")
 	if fileName == "" {
@@ -66,14 +66,14 @@ func downloadFile(fileName string, host, path string, depth int) (*os.File, erro
 
 	log.Printf("Downdloading %s as %s(%d)\n", download, fileName, len(fileName))
 
-	// Get the data
+	// Получение ответа
 	resp, err := http.Get(download)
 	if err != nil {
 		log.Println("get", err)
 		return nil, err
 	}
 	defer resp.Body.Close()
-	// Check server response
+	// Проверка ответа сервера
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("bad status: %s", resp.Status)
 		return nil, fmt.Errorf("bad status: %s", resp.Status)
@@ -81,15 +81,20 @@ func downloadFile(fileName string, host, path string, depth int) (*os.File, erro
 
 	log.Printf("Finished %s\n", download)
 
-	// Create the file
-	out := createFile(fileName)
-	log.Printf("copying %s ...\n", out.Name())
+	// Создание файла
+	out, err := createFile(fileName)
+	if err != nil {
+		log.Println("error creating file")
+		return nil, err
+	}
 	_, err = io.Copy(out, resp.Body)
-
+	if err != nil {
+		log.Println("cannot process responce body")
+		return nil, err
+	}
 	out.Close()
 
 	out, err = os.Open(out.Name())
-
 	if err != nil {
 		log.Println(err)
 		return nil, err
@@ -105,19 +110,21 @@ func downloadFile(fileName string, host, path string, depth int) (*os.File, erro
 		return nil, err
 	}
 	downloadStatic(host, document)
+
+	// В случае достижения максимальной глубины ссылки со страницы не обрабатываются
 	if !recursive {
 		return out, nil
 	}
 	log.Println("scanning links...")
 
-	// Find all links and process them
+	// Поиск и обработка всех ссылок со страницы
 	var links = make([]*url.URL, 0)
 	document.Find("a").Each(func(index int, element *goquery.Selection) {
 		href, exists := element.Attr("href")
 		if exists {
 			parsedURL, err := url.Parse(href)
 			if err == nil {
-				if len(parsedURL.Host) == 0 {
+				if len(parsedURL.Host) == 0 { // Хост отсутствует ==> относительная ссылка, хост такой же как у текущей страницы
 					parsedURL.Host = host
 				}
 				if host == parsedURL.Host {
@@ -128,10 +135,11 @@ func downloadFile(fileName string, host, path string, depth int) (*os.File, erro
 			}
 		}
 	})
-	log.Println(links)
+
+	// Рекурсивная загрузка всех ссылок со страницы
 	for _, plink := range links {
 		newFileName := plink.Path
-		if _, ok := treeMap[newFileName]; !ok {
+		if _, ok := treeMap[newFileName]; !ok { // Проверка того, что файл уже был загружен
 			treeMap[newFileName] = true
 			downloadFile(plink.Path, plink.Host, plink.Path, depth+1)
 		}
@@ -140,9 +148,8 @@ func downloadFile(fileName string, host, path string, depth int) (*os.File, erro
 }
 
 // Создание дерева из директорий и открытие файла
-func createFile(fileName string) (file *os.File) {
+func createFile(fileName string) (file *os.File, err error) {
 	path := strings.Split(fileName, "/")
-	var err error
 	var i int
 	for i = 0; i < len(path)-1; i++ {
 		os.Mkdir(path[i], 0777)
@@ -157,12 +164,7 @@ func createFile(fileName string) (file *os.File) {
 	if err != nil {
 		log.Printf("could not create file: %s", err)
 		file, err = os.Create("index.html")
-		if err != nil {
-			log.Println("links duplicate")
-			os.Exit(-1)
-		}
 	}
-	log.Printf("created file: %s\n", file.Name())
 	return
 }
 
