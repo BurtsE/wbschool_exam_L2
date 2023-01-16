@@ -12,7 +12,11 @@ import (
 
 var memory cache
 
-func main() {}
+func main() {
+	memory = *GetCache()
+	s := NewServer()
+	s.ListenAndServe()
+}
 
 // Сервер
 func NewServer() *http.Server {
@@ -38,26 +42,48 @@ func createEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uid, err := strconv.Atoi(r.Form.Get("user_id"))
+	uid, err := validateID(r)
 	if err != nil {
-		log.Println("invalid id")
+		w.Write([]byte("Not valid id"))
+		return
+	}
+	date, err := validateDate(r)
+	if err != nil {
+		w.Write([]byte("Not valid date"))
 		return
 	}
 
-	date, err := time.Parse("YYYY-MM-DD", r.Form.Get("date"))
-	if err != nil {
-		log.Println("no date specified")
-		return
-	}
 	desc := r.Form.Get("description")
 	var e = event{
-		UID:        uid,
+		UID:         uid,
 		date:        date,
 		description: desc,
 	}
 	memory.Set(uid, e)
-	log.Println("event was added")
+	log.Println("event was added", e)
 }
+
+// Валидация id
+func validateID(r *http.Request) (int, error) {
+	uid, err := strconv.Atoi(r.Form.Get("user_id"))
+	if err != nil {
+		log.Println("invalid id")
+		return 0, err
+	}
+	return uid, nil
+}
+
+// Валидация даты
+func validateDate(r *http.Request) (time.Time, error) {
+	date, err := time.Parse("2006-2-2", r.Form.Get("date"))
+	if err != nil {
+		log.Println("no date specified")
+		log.Println(err)
+		return time.Time{}, err
+	}
+	return date, nil
+}
+
 func updateEvent(w http.ResponseWriter, r *http.Request) {
 
 }
@@ -75,9 +101,8 @@ func eventsForMonth(w http.ResponseWriter, r *http.Request) {
 }
 
 // Сервис
-
 type event struct {
-	UID        int
+	UID         int
 	date        time.Time
 	description string
 }
@@ -89,13 +114,11 @@ type cache struct {
 }
 
 func GetCache() *cache {
-	if memory.storage == nil {
-		memory = cache{
-			storage: make(map[int][]event),
-			mutex:   sync.RWMutex{},
-		}
+	c := cache{
+		storage: make(map[int][]event),
+		mutex:   sync.RWMutex{},
 	}
-	return &memory
+	return &c
 }
 
 func (c *cache) Set(key int, value event) {

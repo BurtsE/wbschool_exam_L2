@@ -40,6 +40,7 @@ func main() {
 		if err == nil {
 			break
 		}
+		time.Sleep(time.Millisecond * 33)
 	}
 	if err != nil {
 		log.Fatal(err)
