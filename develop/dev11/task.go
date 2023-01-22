@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -19,53 +20,98 @@ func main() {
 }
 
 // Сервер
+type handlefunc func(w http.ResponseWriter, r *http.Request)
+type decorator struct {
+	h handlefunc
+}
+
+func (d *decorator) processMethod(method string) handlefunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != method {
+			data, _ := json.Marshal(map[string]string{"error": "wrong method"})
+			w.Write(data)
+			w.WriteHeader(400)
+			return
+		}
+		d.h(w, r)
+	}
+}
+func MethodValidate(fn handlefunc, method string) handlefunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Add("Content-Type", "text/json")
+		if r.Method != method {
+			w.WriteHeader(400)
+			data, _ := json.Marshal(map[string]string{"error": "wrong method"})
+			w.Write(data)
+			return
+		}
+		fn(w, r)
+	}
+}
+func Logging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		start := time.Now()
+		next.ServeHTTP(w, req)
+		log.Printf("%s %s %s", req.Method, req.RequestURI, time.Since(start))
+	})
+}
 func NewServer() *http.Server {
-	http.HandleFunc("/create_event", createEvent)
-	http.HandleFunc("/update_event", updateEvent)
-	http.HandleFunc("/delete_event", deleteEvent)
-	http.HandleFunc("/events_for_day", eventsForDay)
-	http.HandleFunc("/events_for_week", eventsForWeek)
-	http.HandleFunc("/events_for_month", eventsForMonth)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/create_event", MethodValidate(createEvent, "POST"))
+	mux.HandleFunc("/update_event", MethodValidate(updateEvent, "POST"))
+	mux.HandleFunc("/delete_event", MethodValidate(deleteEvent, "POST"))
+	mux.HandleFunc("/events_for_day", MethodValidate(eventsForDay, "GET"))
+	mux.HandleFunc("/events_for_week", MethodValidate(eventsForWeek, "GET"))
+	mux.HandleFunc("/events_for_month", MethodValidate(eventsForMonth, "GET"))
+	handler := Logging(mux)
 	s := http.Server{
 		Addr:         "localhost:8000",
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
+		Handler:      handler,
 	}
 	return &s
 }
 
 func createEvent(w http.ResponseWriter, r *http.Request) {
-	log.Println("Creating event")
+	uid, date, desc, err := validateParams(r)
+	if err != nil {
+		w.WriteHeader(400)
+		data, _ := json.Marshal(map[string]string{"error": err.Error()})
+		w.Write(data)
+		return
+	}
+	var e = event{
+		UID:         uid,
+		Date:        date,
+		Description: desc,
+	}
+	memory.Set(uid, e)
+}
+
+func validateParams(r *http.Request) (int, time.Time, string, error) {
 	err := r.ParseForm()
 	if err != nil {
 		log.Println("cannot parse form", err)
-		return
+		return 0, time.Time{}, "", err
 	}
 
 	uid, err := validateID(r)
 	if err != nil {
-		w.Write([]byte("Not valid id"))
-		return
+		return 0, time.Time{}, "", err
 	}
 	date, err := validateDate(r)
 	if err != nil {
-		w.Write([]byte("Not valid date"))
-		return
+		return 0, time.Time{}, "", err
 	}
-
 	desc := r.Form.Get("description")
-	var e = event{
-		UID:         uid,
-		date:        date,
-		description: desc,
-	}
-	memory.Set(uid, e)
-	log.Println("event was added", e)
+
+	return uid, date, desc, nil
 }
 
 // Валидация id
 func validateID(r *http.Request) (int, error) {
-	uid, err := strconv.Atoi(r.Form.Get("user_id"))
+	uid, err := strconv.Atoi(r.FormValue("user_id"))
 	if err != nil {
 		log.Println("invalid id")
 		return 0, err
@@ -75,7 +121,7 @@ func validateID(r *http.Request) (int, error) {
 
 // Валидация даты
 func validateDate(r *http.Request) (time.Time, error) {
-	date, err := time.Parse("2006-2-2", r.Form.Get("date"))
+	date, err := time.Parse("2006-01-02", r.Form.Get("date"))
 	if err != nil {
 		log.Println("no date specified")
 		log.Println(err)
@@ -92,19 +138,101 @@ func deleteEvent(w http.ResponseWriter, r *http.Request) {
 }
 func eventsForDay(w http.ResponseWriter, r *http.Request) {
 
+	uid, date, _, err := validateParams(r)
+	if err != nil {
+		w.WriteHeader(400)
+		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		w.Write(errData)
+		return
+	}
+	events, _ := memory.Get(uid, date, date.AddDate(0, 0, 1))
+
+	data, err := formDoc(events)
+	if err != nil {
+		w.WriteHeader(503)
+		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		w.Write(errData)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(data)
+
 }
 func eventsForWeek(w http.ResponseWriter, r *http.Request) {
+	uid, date, _, err := validateParams(r)
+	if err != nil {
+		w.WriteHeader(400)
+		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		w.Write(errData)
+		return
+	}
+
+	events, _ := memory.Get(uid, date, date.AddDate(0, 0, 7))
+
+	data, err := formDoc(events)
+	if err != nil {
+		w.WriteHeader(503)
+		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		w.Write(errData)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(data)
 
 }
 func eventsForMonth(w http.ResponseWriter, r *http.Request) {
+	uid, date, _, err := validateParams(r)
+	if err != nil {
+		w.WriteHeader(400)
+		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		w.Write(errData)
+		return
+	}
 
+	events, _ := memory.Get(uid, date, date.AddDate(0, 1, 0))
+
+	data, err := formDoc(events)
+	if err != nil {
+		w.WriteHeader(503)
+		errData, _ := json.Marshal(map[string]string{"error": err.Error()})
+		w.Write(errData)
+		return
+	}
+	w.WriteHeader(200)
+	w.Write(data)
+}
+
+func createAnswer(status int) []byte {
+	switch status {
+	case 400:
+	case 500:
+	case 503:
+	case 200:
+	}
+	return nil
 }
 
 // Сервис
 type event struct {
 	UID         int
-	date        time.Time
-	description string
+	Date        time.Time
+	Description string
+}
+type result struct {
+	Result []event
+}
+
+func formDoc(evs []event) ([]byte, error) {
+	if len(evs) == 0 {
+		data, _ := json.Marshal([]string{""})
+		return data, nil
+	}
+	r := result{evs}
+	data, err := json.Marshal(r)
+	if err != nil {
+		data, _ = json.Marshal([]string{err.Error()})
+	}
+	return data, err
 }
 
 // Память
@@ -122,7 +250,6 @@ func GetCache() *cache {
 }
 
 func (c *cache) Set(key int, value event) {
-	log.Println("adding message to cache", key)
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	_, exists := c.storage[key]
@@ -131,19 +258,25 @@ func (c *cache) Set(key int, value event) {
 	}
 	c.storage[key] = append(c.storage[key], value)
 	sort.SliceIsSorted(c.storage[key], func(i, j int) bool {
-		return c.storage[key][i].date.Before(c.storage[key][j].date)
+		return c.storage[key][i].Date.Before(c.storage[key][j].Date)
 	})
 }
-func (c *cache) Get(key int) ([]event, error) {
-	log.Println("getting events from cache")
+func (c *cache) Get(key int, start, end time.Time) ([]event, error) {
 	c.mutex.RLock()
 
 	defer c.mutex.RUnlock()
 	val, ok := c.storage[key]
 	if !ok {
-		return nil, errors.New("events not found")
+		return nil, errors.New("No users with this id")
 	}
-	return val, nil
+	var i, j int
+	for i = 0; i < len(val) && val[i].Date.Before(start); i++ {
+	}
+	j = i
+	for j < len(val) && val[i].Date.Before(end) {
+		j++
+	}
+	return val[i:j], nil
 }
 
 func (c *cache) Delete(key int) {
