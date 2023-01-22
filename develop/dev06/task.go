@@ -1,5 +1,18 @@
 package main
 
+/*
+=== Утилита cut ===
+
+Принимает STDIN, разбивает по разделителю (TAB) на колонки, выводит запрошенные
+
+Поддержать флаги:
+-f - "fields" - выбрать поля (колонки)
+-d - "delimiter" - использовать другой разделитель
+-s - "separated" - только строки с разделителем
+
+Программа должна проходить все тесты. Код должен проходить проверки go vet и golint.
+*/
+
 import (
 	"bufio"
 	"flag"
@@ -31,20 +44,6 @@ func main() {
 	scanner := bufio.NewScanner(os.Stdin)
 	writer := bufio.NewWriter(os.Stdout)
 	Cut(s, fields, d, scanner, writer)
-	//		for scanner.Scan() {
-	//			columns := strings.Split(scanner.Text(), d)
-	//			if len(columns) > 1 {
-	//				for _, n := range fields {
-	//					if n < len(columns)+1 {
-	//						fmt.Print(columns[n-1], " ")
-	//					}
-	//				}
-	//				fmt.Print("\n")
-	//			} else if !s {
-	//				fmt.Println(columns[0])
-	//			}
-	//		}
-	//	}
 }
 func Cut(s bool, fields []int, d string, scanner *bufio.Scanner, w *bufio.Writer) {
 
