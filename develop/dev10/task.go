@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -31,20 +32,14 @@ func main() {
 
 	go startServer()
 
-	var conn net.Conn
-	var err error
-	var end = time.Now().Add(Conn.timeout)
+	ctx, cancel := context.WithTimeout(context.Background(), Conn.timeout)
+	defer cancel()
 
-	for time.Now().Before(end) {
-		conn, err = net.Dial("tcp", Conn.host+":"+Conn.port)
-		if err == nil {
-			break
-		}
-		time.Sleep(time.Millisecond * 33)
+	conn := connectToServerTCP(ctx)
+	if conn == nil {
+		return
 	}
-	if err != nil {
-		log.Fatal(err)
-	}
+
 	defer conn.Close()
 	log.Println("connected")
 
@@ -65,6 +60,21 @@ func main() {
 		if err != nil {
 			log.Println(err)
 			return
+		}
+	}
+}
+
+func connectToServerTCP(ctx context.Context) net.Conn {
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("timeout")
+			return nil
+		default:
+			conn, err := net.Dial("tcp", Conn.host+":"+Conn.port)
+			if err == nil {
+				return conn
+			}
 		}
 	}
 }
