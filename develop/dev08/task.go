@@ -134,7 +134,7 @@ func execEcho(args []string) {
 	}
 	fmt.Println()
 }
-
+// Выполнение kill
 func execKill(args []string) {
 	pid, err := strconv.Atoi(args[0])
 	if err != nil {
@@ -148,7 +148,7 @@ func execKill(args []string) {
 		log.Println("cannot kill process: ", err)
 	}
 }
-
+// Выполнение pwd
 func execPwd(args []string) {
 	dir, err := os.Getwd()
 	if err != nil {
