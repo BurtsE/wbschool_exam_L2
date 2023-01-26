@@ -2,7 +2,10 @@ package main
 
 import "fmt"
 
-
+/*
+Паттерн Builder относится к порождающим паттернам. Определяет процесс поэтапного построения сложного продукта
+После того как будет построена последняя его часть, продукт можно использовать.
+*/
 type House struct {
 	city, street string
 	apNum        int
@@ -59,15 +62,18 @@ func (b *HouseBuilder) Sold() *HouseSellingBuilder {
 	b.house.sold = true
 	return &HouseSellingBuilder{*b}
 }
+func (b *HouseBuilder) Build() *House {
+	return b.house
+}
 
 func main() {
 	h := NewHouseBuilder()
 	fmt.Println(h.house.cost)
 
-	h.Adress().
+	house := h.Adress().
 		City("Moskow").Street("").ApNum(14).
 		Sold().
-		For(20000).To("Ivan")
+		For(20000).To("Ivan").Build()
 
-	fmt.Println(h.house.cost)
+	fmt.Println(house.cost)
 }
