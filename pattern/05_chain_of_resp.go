@@ -2,8 +2,11 @@ package main
 
 import "fmt"
 
+// Паттерн Chain Of Responsibility относится к поведенческим паттернам
 // Реализован в пакете http (Handler interface) - пример
-
+// По сути это цепочка обработчиков, которые по очереди получают запрос, а затем решают, обрабатывать его или нет.
+// Если запрос не обработан, то он передается дальше по цепочке. Если же он обработан, то паттерн сам решает передавать его дальше или нет.
+// Если запрос не обработан ни одним обработчиком, то он просто теряется.
 type task struct {
 	name string
 }
@@ -29,6 +32,7 @@ func (h *Head) Handle(t *task) {
 func (h *Head) setNext(next handler) {
 	h.next = next
 }
+
 type Body struct {
 	next handler
 }
@@ -45,6 +49,7 @@ func (h *Body) Handle(t *task) {
 func (h *Body) setNext(next handler) {
 	h.next = next
 }
+
 type Foot struct {
 	next handler
 }
